@@ -75,9 +75,6 @@ services:
       - CLICKHOUSE_PORT=9000
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    depends_on:
-      schema-migrator-sync:
-        condition: service_completed_successfully
 
   # Zookeeper y Migrator se quedan sin puertos (son 100% internos)
   zookeeper:
