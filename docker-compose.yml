@@ -81,6 +81,8 @@ services:
     image: signoz/zookeeper:3.7.1
     container_name: signoz-zookeeper-1
     networks: [signoz-net]
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
 
 schema-migrator-sync:
     image: 'signoz/signoz-schema-migrator:v0.129.13'
