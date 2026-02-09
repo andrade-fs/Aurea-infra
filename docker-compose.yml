@@ -42,7 +42,6 @@ services:
       - "127.0.0.1:9000:9000" # Puerto nativo de ClickHouse (solo SSH)
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./cluster.xml:/etc/clickhouse-server/config.d/cluster.xml
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "--user=${CLICKHOUSE_USER}", "--password=${CLICKHOUSE_PASSWORD}", "localhost:8123/ping"]
 
@@ -84,23 +83,23 @@ services:
     environment:
       - ALLOW_ANONYMOUS_LOGIN=yes
 
-schema-migrator-sync:
-    image: 'signoz/signoz-schema-migrator:v0.129.13'
-    container_name: schema-migrator-sync
-    networks:
-      - signoz-net
-    restart: "no"
-    # Cambiamos el entrypoint para debuguear y forzar salida limpia
-    entrypoint: ["sh", "-c"]
-    command: 
-      - |
-        echo "Esperando a ClickHouse..."
-        sleep 10
-        ./signoz-schema-migrator sync --dsn=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000/ --cluster-name=cluster --replication=true || echo "Fallo en migración, pero continuando..."
-        exit 0
-    depends_on:
-      clickhouse:
-        condition: service_healthy
+  schema-migrator-sync:
+      image: 'signoz/signoz-schema-migrator:v0.129.13'
+      container_name: schema-migrator-sync
+      networks:
+        - signoz-net
+      restart: "no"
+      # Cambiamos el entrypoint para debuguear y forzar salida limpia
+      entrypoint: ["sh", "-c"]
+      command: 
+        - |
+          echo "Esperando a ClickHouse..."
+          sleep 10
+          ./signoz-schema-migrator sync --dsn=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000/ --cluster-name=cluster --replication=true || echo "Fallo en migración, pero continuando..."
+          exit 0
+      depends_on:
+        clickhouse:
+          condition: service_healthy
   
 volumes:
   postgres_data:
