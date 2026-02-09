@@ -86,15 +86,22 @@ services:
     networks: [signoz-net]
 
   schema-migrator-sync:
-    image: signoz/signoz-schema-migrator:v0.129.13
-    container_name: schema-migrator-sync
-    networks: [signoz-net]
-    restart: "no"
-    command: ["sync", "--dsn=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000/", "--cluster-name=cluster", "--replication=true"]
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-
+      image: 'signoz/signoz-schema-migrator:v0.129.13'
+      container_name: schema-migrator-sync
+      networks:
+        - signoz-net
+      # Esto evita que Coolify entre en pánico si el contenedor se detiene
+      restart: "no" 
+      command:
+        - sh
+        - -c
+        - |
+          sleep 5;
+          ./signoz-schema-migrator sync --dsn=tcp://default:${CLICKHOUSE_PASSWORD}@clickhouse:9000/ --cluster-name=cluster --replication=true
+      depends_on:
+        clickhouse:
+          condition: service_healthy
+  
 volumes:
   postgres_data:
   clickhouse_data:
