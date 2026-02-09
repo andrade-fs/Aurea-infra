@@ -82,7 +82,7 @@ services:
     image: signoz/signoz-schema-migrator:v0.129.13
     container_name: schema-migrator-sync
     networks: [signoz-net]
-    restart: "on-failure"
+    restart: "no"
     command:
       - sync
       - --dsn=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000/
