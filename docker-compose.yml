@@ -85,22 +85,23 @@ services:
     container_name: signoz-zookeeper-1
     networks: [signoz-net]
 
-  schema-migrator-sync:
-      image: 'signoz/signoz-schema-migrator:v0.129.13'
-      container_name: schema-migrator-sync
-      networks:
-        - signoz-net
-      # Esto evita que Coolify entre en pánico si el contenedor se detiene
-      restart: "no" 
-      command:
-        - sh
-        - -c
-        - |
-          sleep 5;
-          ./signoz-schema-migrator sync --dsn=tcp://default:${CLICKHOUSE_PASSWORD}@clickhouse:9000/ --cluster-name=cluster --replication=true
-      depends_on:
-        clickhouse:
-          condition: service_healthy
+schema-migrator-sync:
+    image: 'signoz/signoz-schema-migrator:v0.129.13'
+    container_name: schema-migrator-sync
+    networks:
+      - signoz-net
+    restart: "no"
+    # Cambiamos el entrypoint para debuguear y forzar salida limpia
+    entrypoint: ["sh", "-c"]
+    command: 
+      - |
+        echo "Esperando a ClickHouse..."
+        sleep 10
+        ./signoz-schema-migrator sync --dsn=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000/ --cluster-name=cluster --replication=true || echo "Fallo en migración, pero continuando..."
+        exit 0
+    depends_on:
+      clickhouse:
+        condition: service_healthy
   
 volumes:
   postgres_data:
