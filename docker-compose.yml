@@ -6,41 +6,29 @@ networks:
     external: false
 
 services:
-  # --- BASES DE DATOS (Privadas) ---
   postgres:
     image: postgres:16-alpine
     container_name: aurea_postgres
     networks: [signoz-net]
-    # Puertos eliminados para seguridad. Acceso interno: postgres:5432
+    ports:
+      - "127.0.0.1:5432:5432" # Solo tú vía SSH
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          memory: 1g
 
   redis:
     image: redis:7-alpine
     container_name: aurea_redis
     networks: [signoz-net]
+    ports:
+      - "127.0.0.1:6379:6379" # Solo tú vía SSH
     deploy:
       resources:
         limits:
           memory: 256mb
-
-  # --- INFRAESTRUCTURA SIGNOZ ---
-  zookeeper:
-    image: signoz/zookeeper:3.7.1
-    container_name: signoz-zookeeper-1
-    networks: [signoz-net]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:8080/commands/ruok | grep null"]
-    environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
 
   clickhouse:
     image: clickhouse/clickhouse-server:25.5.6
@@ -49,14 +37,14 @@ services:
     environment:
       - CLICKHOUSE_USER=${CLICKHOUSE_USER}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+    ports:
+      - "127.0.0.1:8123:8123" # Puerto HTTP de ClickHouse (solo SSH)
+      - "127.0.0.1:9000:9000" # Puerto nativo de ClickHouse (solo SSH)
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./cluster.xml:/etc/clickhouse-server/config.d/cluster.xml
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "--user=${CLICKHOUSE_USER}", "--password=${CLICKHOUSE_PASSWORD}", "localhost:8123/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   signoz:
     image: signoz/signoz:v0.110.1
@@ -67,36 +55,19 @@ services:
         condition: service_healthy
     environment:
       - SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000
-      - SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
       - STORAGE=clickhouse
-    # Nota: Si quieres ver el panel de SigNoz, asígnale un Dominio en la UI de Coolify apuntando al puerto 8080
+    # IMPORTANTE: No mapeamos puerto aquí. Usaremos la pestaña "Domains" en Coolify para acceder vía HTTPS.
     volumes:
       - signoz_sqlite:/var/lib/signoz
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "localhost:8080/api/v1/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  schema-migrator-sync:
-    image: signoz/signoz-schema-migrator:v0.129.13
-    container_name: schema-migrator-sync
-    networks: [signoz-net]
-    restart: "no"
-    command:
-      - sync
-      - --dsn=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000/
-      - --cluster-name=cluster
-      - --replication=true
-    depends_on:
-      clickhouse:
-        condition: service_healthy
 
   otel-collector:
     image: signoz/signoz-otel-collector:v0.129.13
     container_name: signoz-otel-collector
     networks: [signoz-net]
     command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "127.0.0.1:4317:4317" # Para enviar telemetría desde fuera si fuera necesario vía SSH
+      - "127.0.0.1:4318:4318"
     environment:
       - CLICKHOUSE_USER=${CLICKHOUSE_USER}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
@@ -107,7 +78,21 @@ services:
     depends_on:
       schema-migrator-sync:
         condition: service_completed_successfully
-      signoz:
+
+  # Zookeeper y Migrator se quedan sin puertos (son 100% internos)
+  zookeeper:
+    image: signoz/zookeeper:3.7.1
+    container_name: signoz-zookeeper-1
+    networks: [signoz-net]
+
+  schema-migrator-sync:
+    image: signoz/signoz-schema-migrator:v0.129.13
+    container_name: schema-migrator-sync
+    networks: [signoz-net]
+    restart: "no"
+    command: ["sync", "--dsn=tcp://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000/", "--cluster-name=cluster", "--replication=true"]
+    depends_on:
+      clickhouse:
         condition: service_healthy
 
 volumes:
