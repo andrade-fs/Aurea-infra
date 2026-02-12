@@ -1,0 +1,57 @@
+name: Gitleaks Security Scan
+on:
+  workflow_call:
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          # Detectamos versión y descargamos el binario oficial
+          VERSION="8.18.2"
+          curl -sSLo gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+
+      - name: Run Gitleaks
+        run: |
+          gitleaks detect --source="." --report-path="gitleaks-reporte.json" --verbose || true
+
+      - name: Upload Report to MinIO
+        run: |
+          # 1. Definición de variables
+          REPO_NAME=${{ github.event.repository.name }}   
+          CURRENT_DATE=$(date +'%Y-%m-%d')                
+          FILE="gitleaks-reporte.json"
+          
+          # 2. Descargar cliente MinIO
+          curl -s https://dl.min.io/client/mc/release/linux-amd64/mc -o mc
+          chmod +x mc
+          
+          # 3. Configurar alias
+          echo "Usuario: ${{ secrets.MINIO_ACCESS_KEY }}"
+          ./mc alias set myminio ${{ vars.MINIO_HOST_URL }} ${{ secrets.MINIO_ACCESS_KEY }} ${{ secrets.MINIO_SECRET_KEY }}
+          
+          # 4. Construir la ruta de destino (Sin la carpeta TOOL)
+          TARGET_PATH="myminio/gitea-reports/${REPO_NAME}/${CURRENT_DATE}/${FILE}"
+          
+          echo "📤 Subiendo reporte: ${FILE}"
+          echo "📂 Destino: ${REPO_NAME}/${CURRENT_DATE}/"
+          
+          # 5. Ejecutar la subida
+          ./mc cp ${FILE} ${TARGET_PATH}
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ ¡Conseguido! Reporte subido a MinIO."
+            echo "🔗 Ruta final: ${TARGET_PATH#myminio/}"
+          else
+            echo "❌ Error al subir a MinIO."
+            exit 1
+          fi

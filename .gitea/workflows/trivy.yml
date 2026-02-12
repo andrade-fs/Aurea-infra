@@ -1,0 +1,74 @@
+name: Trivy Security Scan Full
+on:
+  workflow_call:
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update && apt-get install -y curl
+          elif command -v apk >/dev/null; then
+            apk add --no-cache curl
+          fi
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Full Scan and Generate HTML Report
+        run: |
+          # 1. Definimos la ruta común
+          FECHA=$(date +'%Y%m%d')
+          REPO_NAME="${{ github.event.repository.name }}"
+          FOLDER="/mnt/gitea-reports/${FECHA}-${REPO_NAME}"
+          
+          # 2. Guardamos en el entorno para el paso de Upload
+          echo "REPORT_FOLDER=$FOLDER" >> $GITHUB_ENV
+          
+          # 3. Aseguramos la carpeta y descargamos la plantilla
+          mkdir -p "$FOLDER"
+          curl -sLo html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+          
+          # 4. Ejecutamos Trivy apuntando al VOLUMEN
+          # Nombre de archivo: trivy-{repo}.html
+          trivy fs \
+            --format template \
+            --template "@html.tpl" \
+            --output "trivy-report.html" \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --scanners vuln,misconfig,secret \
+            . || true
+
+      - name: Upload Report to MinIO
+        run: |
+          # 1. Definición de variables
+          REPO_NAME=${{ github.event.repository.name }}   
+          CURRENT_DATE=$(date +'%Y-%m-%d')                
+          FILE="trivy-report.html"
+          
+          # 2. Descargar cliente MinIO
+          curl -s https://dl.min.io/client/mc/release/linux-amd64/mc -o mc
+          chmod +x mc
+          
+          # 3. Configurar alias
+          ./mc alias set myminio ${{ vars.MINIO_HOST_URL }} ${{ secrets.MINIO_ACCESS_KEY }} ${{ secrets.MINIO_SECRET_KEY }}
+          
+          # 4. Construir la ruta de destino (Sin la carpeta TOOL)
+          TARGET_PATH="myminio/gitea-reports/${REPO_NAME}/${CURRENT_DATE}/${FILE}"
+          
+          echo "📤 Subiendo reporte: ${FILE}"
+          echo "📂 Destino: ${REPO_NAME}/${CURRENT_DATE}/"
+          
+          # 5. Ejecutar la subida
+          ./mc cp ${FILE} ${TARGET_PATH}
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ ¡Conseguido! Reporte subido a MinIO."
+            echo "🔗 Ruta final: ${TARGET_PATH#myminio/}"
+          else
+            echo "❌ Error al subir a MinIO."
+            exit 1
+          fi
