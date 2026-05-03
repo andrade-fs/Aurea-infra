@@ -5,6 +5,11 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+        # Agregar ruta API v1
+        apiv1:
+          traces: "/v1/traces"
+          metrics: "/v1/metrics"
+          logs: "/v1/logs"
 
 processors:
   batch:
