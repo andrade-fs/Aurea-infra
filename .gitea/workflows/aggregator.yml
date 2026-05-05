@@ -1,0 +1,52 @@
+name: Final Aggregator
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sonar:
+    uses: ./.gitea/workflows/sonar.yml
+    secrets: inherit # Esto pasa todos los secretos al aggregator
+
+  sonar-report:
+    needs: [sonar]
+    uses: ./.gitea/workflows/sonar-report.yml
+    secrets: inherit # Esto pasa todos los secretos al aggregator
+
+  trivy:
+    uses: ./.gitea/workflows/trivy.yml
+    secrets: inherit # Esto pasa todos los secretos al aggregator
+
+  gitleaks:
+    uses: ./.gitea/workflows/gitleaks.yaml
+    secrets: inherit # Esto pasa todos los secretos al aggregator
+
+  generate-report:
+    needs: [sonar-report, trivy, gitleaks]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Environment
+        run: |
+          echo "CURRENT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: Download from MinIO
+        run: |
+          # 1. Instalar cliente mc
+          curl -s https://dl.min.io/client/mc/release/linux-amd64/mc -o mc
+          chmod +x mc
+          
+          # 2. Configurar Alias
+          ./mc alias set myminio ${{ vars.MINIO_HOST_URL }} ${{ secrets.MINIO_ACCESS_KEY }} ${{ secrets.MINIO_SECRET_KEY }}
+          
+          # 3. Descargar carpeta del día
+          # Usamos --recursive para traer todo lo que haya en la carpeta de hoy
+          mkdir -p ./daily-reports
+          ./mc cp --recursive myminio/gitea-reports/${{ github.event.repository.name }}/${{ env.CURRENT_DATE }}/ ./daily-reports/ || echo "No hay reportes para hoy."
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: reports-${{ env.CURRENT_DATE }}
+          path: ./daily-reports/
+          retention-days: 7

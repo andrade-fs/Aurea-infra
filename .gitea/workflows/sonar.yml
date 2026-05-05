@@ -1,0 +1,21 @@
+name: sonar
+on:
+  workflow_call:
+jobs:
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          # Estos argumentos sobrescriben cualquier falta de archivo .properties
+          args: >
+            -Dsonar.projectKey=${{ secrets.SONAR_PROYECT_KEY }}
+            -Dsonar.sources=.
